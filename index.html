@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Omeso</title>
+<meta name="theme-color" content="#120d08">
+<meta name="description" content="Omeso (Ekyeso) — a traditional Lusoga board game, playable offline against a friend or the AI.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #120d08; color: #f0e6d8;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    overflow: hidden; user-select: none; -webkit-user-select: none;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; max-width: 560px; margin: 0 auto; }
+  header { position: relative; text-align: center; padding: 6px 4px 2px; flex-shrink: 0; }
+  header h1 { margin: 0; font-size: 17px; letter-spacing: 6px; font-weight: 700; color: #e8b96a; }
+  #turn-indicator { margin-top: 2px; font-size: 14px; font-weight: 700; }
+  #turn-indicator.playerA { color: #dcdcdc; }
+  #turn-indicator.playerB { color: #7fb0ff; }
+  #menu-btn { position: absolute; right: 8px; top: 6px; background: #2a1e14; color: #f0e6d8; border: 1px solid #a83232; border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 700; }
+
+  .tray { display: flex; align-items: center; justify-content: space-between; margin: 2px 8px; padding: 4px 12px; min-height: 34px; flex-shrink: 0; border-radius: 10px; background: rgba(255,255,255,0.04); transition: background .3s, box-shadow .3s; }
+  .tray.active { background: rgba(232,185,106,0.14); box-shadow: 0 0 0 1px #e8b96a; }
+  .pname { font-size: 12px; font-weight: 700; letter-spacing: 2px; opacity: .92; }
+  .mini { display: inline-block; width: 24px; height: 24px; margin-left: 2px; vertical-align: middle; animation: miniPop .35s ease-out; }
+  @keyframes miniPop { 0% { transform: scale(0); } 70% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+  #board-wrap { flex: 1; min-height: 0; padding: 2px 6px; display: flex; align-items: center; justify-content: center; }
+  #board-svg { width: 100%; height: 100%; touch-action: manipulation; }
+
+  .board-line { stroke: #c44a3d; stroke-width: 3; stroke-linecap: round; opacity: .95; }
+  .node-dot { fill: #3a2a1e; stroke: #c44a3d; stroke-width: 2; }
+  .hit { fill: transparent; }
+
+  .mk-move { fill: #3fd05a; animation: mkPulse 1s ease-in-out infinite; }
+  .mk-capture { fill: #ff4d4d; animation: mkPulse .8s ease-in-out infinite; }
+  .mk-ai { fill: none; stroke: #e8b96a; stroke-width: 2.5; stroke-dasharray: 5 4; }
+  @keyframes mkPulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+
+  .tok { pointer-events: none; transition: transform .4s cubic-bezier(.25,.8,.3,1); }
+  .tok .inner { transform-origin: 0 0; }
+  .body { stroke-width: 2; }
+  .body.A { fill: url(#gA); stroke: #000; }
+  .body.B { fill: url(#gB); stroke: #0a1e55; }
+  .shine { fill: rgba(255,255,255,0.22); }
+  .tok.king .body { stroke: #ffd36b; stroke-width: 3.5; }
+  .tok.sel .body { stroke: #ffd36b; stroke-width: 4.5; }
+  .tok.sel .inner { animation: selPulse .9s ease-in-out infinite; filter: drop-shadow(0 0 7px #ffd36b); }
+  @keyframes selPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.09); } }
+
+  .halo { display: none; fill: rgba(255,50,50,0.28); stroke: #ff3b3b; stroke-width: 4; }
+  .tok.doomed .halo { display: block; animation: haloPulse .7s ease-in-out infinite; }
+  .tok.doomed .body { stroke: #ff3b3b; stroke-width: 4; }
+  @keyframes haloPulse { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.15); } }
+  .warnmark { font-size: 22px; text-anchor: middle; animation: warnBounce .6s ease-in-out infinite; }
+  @keyframes warnBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+  .crown { font-size: 24px; transform-box: fill-box; transform-origin: 50% 100%; animation: crownPop .55s ease-out; }
+  @keyframes crownPop { 0% { transform: scale(0) translateY(-24px); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
+
+  .tok.dying .inner { animation: dieAnim .45s ease-in forwards; }
+  @keyframes dieAnim { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(0) rotate(90deg); opacity: 0; } }
+
+  .fx { font-size: 26px; font-weight: 800; fill: #ffd36b; pointer-events: none; animation: fxFloat 1s ease-out forwards; paint-order: stroke; stroke: #000; stroke-width: 1px; }
+  .fx.burst { font-size: 34px; stroke: none; animation-name: burstAnim; animation-duration: .6s; }
+  @keyframes fxFloat { 0% { opacity: 0; transform: translateY(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-48px); } }
+  @keyframes burstAnim { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-16px); } }
+
+  #status { min-height: 20px; text-align: center; font-size: 13px; padding: 2px 8px; flex-shrink: 0; opacity: .9; }
+  #status.warn { color: #ff6b6b; font-weight: 700; opacity: 1; }
+  #action-bar { display: flex; justify-content: center; gap: 10px; padding: 4px 0 10px; min-height: 46px; flex-shrink: 0; }
+  #action-bar button { background: #e8b96a; color: #1a1410; border: none; border-radius: 10px; padding: 10px 22px; font-size: 15px; font-weight: 800; }
+
+  #game-over { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 10; }
+  #game-over.show { display: flex; }
+  #game-over h2 { color: #e8b96a; font-size: 24px; margin: 0; }
+  #game-over button { background: #e8b96a; color: #1a1410; border: none; border-radius: 8px; padding: 10px 22px; font-size: 15px; font-weight: 700; }
+  #menu { position: fixed; inset: 0; background: rgba(18,13,8,0.97); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; z-index: 20; }
+  #menu.show { display: flex; }
+  #menu h2 { color: #e8b96a; font-size: 32px; letter-spacing: 7px; margin: 0; }
+  #menu .sub { opacity: .7; letter-spacing: 2px; font-size: 13px; margin-top: 6px; }
+  #menu button { width: 240px; background: #e8b96a; color: #1a1410; border: none; border-radius: 10px; padding: 13px; font-size: 15px; font-weight: 800; }
+  #sound-btn { position: absolute; left: 8px; top: 6px; background: #2a1e14; border: 1px solid #a83232; border-radius: 8px; padding: 4px 9px; font-size: 15px; color: #f0e6d8; }
+  .kring { display: none; fill: none; stroke: #ffd36b; stroke-width: 3.5; }
+  .tok.king .kring { display: block; }
+  .tok.doomed .shape { filter: drop-shadow(0 0 5px #ff3b3b); }
+  #tokens-screen { position: fixed; inset: 0; background: rgba(18,13,8,0.98); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px; z-index: 30; }
+  #tokens-screen.show { display: flex; }
+  #tokens-screen h2 { color: #e8b96a; letter-spacing: 4px; margin: 0 0 4px; font-size: 22px; }
+  .tsec { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 8px 10px; width: 92%; max-width: 380px; }
+  .tlabel { font-size: 12px; font-weight: 800; letter-spacing: 3px; margin-bottom: 4px; opacity: .9; }
+  .trow { display: flex; gap: 6px; justify-content: space-between; margin: 5px 0; }
+  .opt { background: #2a1e14; border: 2px solid transparent; border-radius: 10px; padding: 3px; }
+  .opt.on { border-color: #e8b96a; background: #3a2a1c; }
+  .sw { width: 38px; height: 38px; border-radius: 50%; border: 3px solid transparent; }
+  .sw.on { border-color: #fff; }
+  .sw.dis { opacity: .22; }
+  #tokens-screen button.ok { width: 200px; background: #e8b96a; color: #1a1410; border: none; border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 800; margin-top: 6px; }
+  .ropt { display: block; width: 100%; text-align: left; background: #2a1e14; border: 2px solid transparent; border-radius: 8px; padding: 8px 10px; margin: 4px 0; font-size: 12.5px; color: #f0e6d8; }
+  .ropt.on { border-color: #e8b96a; background: #3a2a1c; }
+  .ropt b { color: #e8b96a; }
+  #guide { position: fixed; inset: 0; background: rgba(18,13,8,0.98); display: none; flex-direction: column; z-index: 25; }
+  #guide.show { display: flex; }
+  #guide .gtop { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; flex-shrink: 0; }
+  #guide h2 { color: #e8b96a; letter-spacing: 3px; font-size: 20px; margin: 0; }
+  #guide .gclose { background: #2a1e14; color: #f0e6d8; border: 1px solid #a83232; border-radius: 8px; padding: 6px 12px; font-size: 14px; font-weight: 800; }
+  #guide .gbody { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 24px; }
+  #guide .step { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+  #guide .step b { color: #e8b96a; display: block; font-size: 13.5px; margin-bottom: 3px; }
+  #guide .step p { margin: 0; font-size: 13px; line-height: 1.5; opacity: .95; }
+  #guide .dot { display: inline-block; width: 15px; height: 15px; border-radius: 50%; vertical-align: middle; margin: 0 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>OMESO</h1>
+    <div id="turn-indicator" class="playerA">⚫ PLAYER A's TURN</div>
+    <button id="sound-btn" onclick="toggleSound()">🔊</button>
+    <button id="menu-btn" onclick="showMenu()">☰ MENU</button>
+  </header>
+  <div class="tray" id="tray-B"><span class="pname" id="lbl-B">🔵 PLAYER B</span><span id="cap-B"></span></div>
+  <div id="board-wrap"><svg id="board-svg" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <div class="tray" id="tray-A"><span class="pname" id="lbl-A">⚫ PLAYER A</span><span id="cap-A"></span></div>
+  <div id="status"></div>
+  <div id="action-bar"></div>
+</div>
+
+<div id="menu" class="show">
+  <h2>OMESO</h2>
+  <div class="sub">EKYESO</div>
+  <button onclick="startGame('two')">👥 TWO PLAYERS</button>
+  <div class="sub">🤖 PLAY VS AI (you play Player A)</div>
+  <button onclick="startGame('ai','easy')">🌱 EASY</button>
+  <button onclick="startGame('ai','moderate')">⚔️ MODERATE</button>
+  <button onclick="startGame('ai','hard')">🔥 HARD</button>
+  <div class="sub">🎨 LOOK &amp; RULES</div>
+  <button onclick="openGuide()">📖 HOW TO PLAY</button>
+  <button onclick="openTokens()">🎨 TOKENS, COLORS &amp; RULES</button>
+  <button id="resume-btn" onclick="resumeGame()" style="display:none">▶️ RESUME GAME</button>
+</div>
+
+<svg width="0" height="0" style="position:absolute"><defs id="global-defs"></defs></svg>
+
+<div id="guide">
+  <div class="gtop"><h2>📖 HOW TO PLAY</h2><button class="gclose" onclick="closeGuide()">✔ CLOSE</button></div>
+  <div class="gbody" id="guide-body"></div>
+</div>
+
+<div id="tokens-screen">
+  <h2>🎨 TOKENS</h2>
+  <div class="tsec"><div class="tlabel" id="tl-A">PLAYER A</div><div class="trow" id="shapes-A"></div><div class="trow" id="colors-A"></div></div>
+  <div class="tsec"><div class="tlabel" id="tl-B">PLAYER B</div><div class="trow" id="shapes-B"></div><div class="trow" id="colors-B"></div></div>
+  <div class="tsec">
+    <div class="tlabel">👑 KING ENERGY RULE</div>
+    <div id="king-rule-opts"></div>
+  </div>
+  <button class="ok" onclick="closeTokens()">✔ OK</button>
+</div>
+
+<div id="game-over">
+  <h2 id="winner-text"></h2>
+  <button onclick="resetGame()">🔄 NEW GAME</button>
+  <button onclick="showMenu()">☰ MENU</button>
+</div>
+
+<script>
+// ---------- BOARD DATA (confirmed against physical board photos) ----------
+// Node numbering: 1-25, row-major, top-left to bottom-right.
+const BOARD_GRAPH = {
+   1:[2,6,7],            2:[1,3,7],             3:[2,4,7,8,9],
+   4:[3,5,9],            5:[4,9,10],
+   6:[1,7,11],           7:[1,2,3,6,8,11,12,13],  8:[3,7,9,13],
+   9:[3,4,5,8,10,13,14,15],10:[5,9,15],
+  11:[6,7,12,16,17],    12:[7,11,13,17],       13:[7,8,9,12,14,17,18,19],
+  14:[9,13,15,19],      15:[9,10,14,19,20],
+  16:[11,17,21],        17:[11,12,13,16,18,21,22,23], 18:[13,17,19,23],
+  19:[13,14,15,18,20,23,24,25],20:[15,19,25],
+  21:[16,17,22],        22:[17,21,23],         23:[17,18,19,22,24],
+  24:[19,23,25],        25:[19,20,24]
+};
+
+// Player A occupies columns 1-2, Player B occupies columns 4-5, column 3 starts empty.
+const START_A = [1,2,6,7,11,12,16,17,21,22];
+const START_B = [4,5,9,10,14,15,19,20,24,25];
+
+// ---------- GEOMETRY ----------
+// Board is drawn as a tall rectangle. Player A's columns 1-2 sit at the bottom, Player B's 4-5 at the top.
+const SX = 88, SY = 148, MX = 52, MY = 52;
+const VIEW_W = MX * 2 + SX * 4, VIEW_H = MY * 2 + SY * 4;
+function nodeRowCol(id) {
+  const row = Math.floor((id - 1) / 5) + 1;
+  const col = ((id - 1) % 5) + 1;
+  return { row, col };
+}
+function nodePos(id) {
+  const { row, col } = nodeRowCol(id);
+  return { x: MX + (row - 1) * SX, y: MY + (5 - col) * SY };
+}
+function buildEdgeList() {
+  const edges = [];
+  for (const idStr of Object.keys(BOARD_GRAPH)) {
+    const id = Number(idStr);
+    BOARD_GRAPH[id].forEach(n => { if (n > id) edges.push([id, n]); });
+  }
+  return edges;
+}
+const EDGES = buildEdgeList();
+
+// Reflects node `id` through node `mid` to find the node exactly one step
+// beyond `mid` along the same straight line — this is the landing square
+// for a single-gap capture jump.
+function reflectBeyond(id, mid) {
+  const a = nodeRowCol(id), b = nodeRowCol(mid);
+  const landRow = 2 * b.row - a.row;
+  const landCol = 2 * b.col - a.col;
+  if (landRow < 1 || landRow > 5 || landCol < 1 || landCol > 5) return null;
+  return (landRow - 1) * 5 + landCol;
+}
+
+// ---------- GAME STATE ----------
+// board[id] = null | { player: 'A'|'B', type: 'normal'|'king' }
+let board = {};
+let capturedByA = 0; // count of B tokens captured by A
+let capturedByB = 0; // count of A tokens captured by B
+let currentPlayer = 'A';
+let selected = null;
+let legalMoves = [];          // destination node ids currently selectable
+let captureMap = {};          // destId -> { over: id } when legalMoves are captures
+let mandatoryCaptures = [];   // all legal captures for currentPlayer at turn start
+let chainTokenId = null;      // set while a capture chain is in progress
+let lastMovedTo = null;       // where the moving token ended up this turn (for end-of-turn promotion)
+let gameOver = false;
+let busy = false;             // true while an animation sequence blocks input
+let doomedUid = null;         // token about to be forfeited (drawn in red first)
+let nextUid = 1;
+let mode = 'two';             // 'two' or 'ai'
+let aiPlayer = 'B';           // human is always Player A vs the AI
+let aiLevel = 'moderate';
+let gameId = 0;               // guards against stale AI timers after a reset
+let lastAiSteps = [];         // last AI turn, highlighted so the human can follow it
+
+function newBoard() {
+  const b = {};
+  for (let i = 1; i <= 25; i++) b[i] = null;
+  START_A.forEach(id => b[id] = { player: 'A', type: 'normal', hasCaptured: false, kingMoves: 0, uid: nextUid++ });
+  START_B.forEach(id => b[id] = { player: 'B', type: 'normal', hasCaptured: false, kingMoves: 0, uid: nextUid++ });
+  return b;
+}
+
+function resetGame() {
+  clearTokens();
+  busy = false; doomedUid = null;
+  board = newBoard();
+  capturedByA = 0; capturedByB = 0;
+  currentPlayer = 'A';
+  gameOver = false;
+  gameId++;
+  lastAiSteps = [];
+  document.getElementById('game-over').classList.remove('show');
+  startTurn();
+}
+
+// ---------- RULES ENGINE ----------
+// Board orientation: Player A home = columns 1-2, Player B home = columns 4-5, center = column 3.
+function ownHomeCols(player) { return player === 'A' ? [1, 2] : [4, 5]; }
+function finalCol(player) { return player === 'A' ? 5 : 1; }       // opponent's far column = promotion line
+function hasReachedCenter(player, col) { return player === 'A' ? col >= 3 : col <= 3; } // third line or beyond
+
+// §20: automatic promotion on reaching the opponent's final line.
+// A freshly promoted King starts with hasCaptured=false (Super-Jump must be earned as a King).
+function promoteIfNeeded(id) {
+  const token = board[id];
+  if (!token || token.type !== 'normal') return;
+  if (nodeRowCol(id).col === finalCol(token.player)) {
+    token.type = 'king';
+    token.hasCaptured = false;
+    token.kingMoves = 0;
+  }
+}
+
+// Ordinary (non-capturing) moves. Kings move freely in any direction along board lines (§22-23).
+// Normal tokens that have crossed the center cannot voluntarily retreat into their own home columns (§28).
+function getSimpleMoves(id) {
+  const token = board[id];
+  const empties = BOARD_GRAPH[id].filter(n => board[n] === null);
+  if (token.type === 'king') return kingHasEnergy(token) ? getKingSlideMoves(id) : empties;
+  if (!hasReachedCenter(token.player, nodeRowCol(id).col)) return empties;
+  const home = ownHomeCols(token.player);
+  return empties.filter(n => !home.includes(nodeRowCol(n).col));
+}
+
+// A King that has already eaten as a King has "energy": for ordinary moves it slides any distance
+// along a line through empty points (e.g. corner to corner). It never jumps and never leaves the lines.
+function getKingSlideMoves(id) {
+  const out = [];
+  const start = nodeRowCol(id);
+  const dirs = new Set();
+  BOARD_GRAPH[id].forEach(n => {
+    const q = nodeRowCol(n);
+    dirs.add((q.row - start.row) + ',' + (q.col - start.col));
+  });
+  dirs.forEach(d => {
+    const [dr, dc] = d.split(',').map(Number);
+    let prev = id, row = start.row, col = start.col;
+    while (true) {
+      row += dr; col += dc;
+      if (row < 1 || row > 5 || col < 1 || col > 5) break;
+      const nxt = (row - 1) * 5 + col;
+      if (!BOARD_GRAPH[prev].includes(nxt) || board[nxt] !== null) break;
+      out.push(nxt);
+      prev = nxt;
+    }
+  });
+  return out;
+}
+
+// Normal token: exactly one opponent node followed by exactly one empty node along a real line.
+// Cannot eat a King (§25). Backward captures are allowed (§29 exception).
+function getNormalCaptureMoves(id, token) {
+  const moves = [];
+  BOARD_GRAPH[id].forEach(mid => {
+    const occ = board[mid];
+    if (occ && occ.player !== token.player) {
+      if (occ.type === 'king') return;
+      const landId = reflectBeyond(id, mid);
+      if (landId && BOARD_GRAPH[mid].includes(landId) && board[landId] === null) {
+        moves.push({ from: id, over: mid, to: landId });
+      }
+    }
+  });
+  return moves;
+}
+
+// King capture (§24-27). Walks each straight line from the King along real board edges:
+//  - Baseline King: up to 2 empty gaps before the opponent, lands on the single square just beyond.
+//  - King that has already captured as a King (hasCaptured): Super-Jump — any number of empty gaps,
+//    and may land on any empty square beyond the opponent along that line.
+// Can eat Kings and normal tokens. Never teleports; every step must follow a real edge.
+function getKingCaptureMoves(id, token) {
+  const moves = [];
+  const start = nodeRowCol(id);
+  const dirs = new Set();
+  BOARD_GRAPH[id].forEach(n => {
+    const p = nodeRowCol(n);
+    dirs.add((p.row - start.row) + ',' + (p.col - start.col));
+  });
+
+  dirs.forEach(d => {
+    const [dr, dc] = d.split(',').map(Number);
+    let prevId = id, row = start.row, col = start.col, gaps = 0;
+    while (true) {
+      row += dr; col += dc;
+      if (row < 1 || row > 5 || col < 1 || col > 5) break;
+      const nextId = (row - 1) * 5 + col;
+      if (!BOARD_GRAPH[prevId].includes(nextId)) break; // line doesn't continue here
+      const occ = board[nextId];
+      if (occ === null) {
+        gaps++;
+        if (!kingHasEnergy(token) && gaps > 2) break;
+        prevId = nextId;
+        continue;
+      }
+      if (occ.player === token.player) break; // own piece blocks the line
+      // Opponent found: find landing square(s) beyond it.
+      let lRow = row + dr, lCol = col + dc, lPrev = nextId;
+      while (lRow >= 1 && lRow <= 5 && lCol >= 1 && lCol <= 5) {
+        const landId = (lRow - 1) * 5 + lCol;
+        if (!BOARD_GRAPH[lPrev].includes(landId) || board[landId] !== null) break;
+        moves.push({ from: id, over: nextId, to: landId });
+        if (!kingHasEnergy(token)) break; // baseline: only the square just beyond
+        lPrev = landId; lRow += dr; lCol += dc;
+      }
+      break; // only one opponent per line per jump
+    }
+  });
+  return moves;
+}
+
+function getCaptureMovesForToken(id) {
+  const token = board[id];
+  if (!token) return [];
+  return token.type === 'king' ? getKingCaptureMoves(id, token) : getNormalCaptureMoves(id, token);
+}
+
+function getAllCaptures(player) {
+  let all = [];
+  for (let id = 1; id <= 25; id++) {
+    if (board[id] && board[id].player === player) {
+      all = all.concat(getCaptureMovesForToken(id));
+    }
+  }
+  return all;
+}
+
+// Captures that OBLIGE the player. Normal tokens must eat; a King is only obliged to eat another King.
+// A King may freely ignore a capture of a normal token, with no penalty.
+function getMandatoryCaptures(player) {
+  return getAllCaptures(player).filter(m => {
+    const mover = board[m.from];
+    return mover.type !== 'king' || board[m.over].type === 'king';
+  });
+}
+
+function checkWinner() {
+  const countA = Object.values(board).filter(t => t && t.player === 'A').length;
+  const countB = Object.values(board).filter(t => t && t.player === 'B').length;
+  if (countA === 0 || countB === 0) {
+    gameOver = true;
+    const winner = countA === 0 ? 'B' : 'A';
+    document.getElementById('winner-text').textContent = `🏆 PLAYER ${winner} WINS!`;
+    sfx((mode === 'ai' && winner === aiPlayer) ? 'lose' : 'win');
+    document.getElementById('game-over').classList.add('show');
+  }
+}
+
+// ---------- TURN FLOW ----------
+function startTurn() {
+  chainTokenId = null;
+  selected = null;
+  legalMoves = [];
+  captureMap = {};
+  mandatoryCaptures = getMandatoryCaptures(currentPlayer);
+  setStatus('');
+  render();
+  if (mode === 'ai' && currentPlayer === aiPlayer && !gameOver) {
+    setStatus('🤖 Thinking…');
+    const gid = gameId;
+    setTimeout(() => aiTakeTurn(gid), 400);
+  }
+}
+
+function endTurn() {
+  // A token is crowned only if it finishes its turn on the opponent's final line.
+  if (lastMovedTo !== null && board[lastMovedTo] && board[lastMovedTo].player === currentPlayer) {
+    promoteIfNeeded(lastMovedTo);
+  }
+  lastMovedTo = null;
+  chainTokenId = null;
+  selected = null;
+  legalMoves = [];
+  captureMap = {};
+  currentPlayer = currentPlayer === 'A' ? 'B' : 'A';
+  checkWinner();
+  saveGame();
+  if (!gameOver) startTurn(); else render();
+}
+
+function performSimpleMove(from, to) {
+  const forcedFromSquares = mandatoryCaptures.map(m => m.from); // squares obligated to capture, at turn start
+  const moverWasObligated = forcedFromSquares.includes(from);
+
+  const wasKing = board[from].type === 'king';
+  board[to] = board[from];
+  board[from] = null;
+  if (wasKing) board[to].kingMoves++;
+  lastMovedTo = to;
+  sfx('move');
+  selected = null; legalMoves = []; captureMap = {};
+
+  let huffSquare = null;
+  if (forcedFromSquares.length > 0) {
+    if (moverWasObligated) {
+      huffSquare = to; // the moved token itself was the one that should have eaten
+    } else {
+      // one of the other tokens that had the mandatory capture (lowest id, arbitrary tie-break)
+      const others = Array.from(new Set(forcedFromSquares)).filter(sq => sq !== from);
+      huffSquare = others.sort((a, b) => a - b)[0];
+    }
+  }
+  const doomed = huffSquare !== null ? board[huffSquare] : null;
+  if (!doomed) { endTurn(); return; }
+
+  // Penalty: mark the token in red first so the player can see exactly what is about to happen.
+  busy = true;
+  doomedUid = doomed.uid;
+  setTimeout(() => sfx('warn'), 350);
+  setStatus(`⚠️ Player ${doomed.player} ignored a capture — this token is forfeited!`, true);
+  render();
+  const gid = gameId;
+  setTimeout(() => {
+    if (gid !== gameId) return;
+    board[huffSquare] = null;
+    sfx('forfeit');
+    if (doomed.player === 'A') capturedByB++; else capturedByA++;
+    doomedUid = null;
+    render();
+    setTimeout(() => {
+      if (gid !== gameId) return;
+      busy = false;
+      endTurn();
+    }, 700);
+  }, 1800);
+}
+function performCapture(from, to) {
+  const move = captureMap[to];
+  if (!move) return;
+  const capturedToken = board[move.over];
+  if (capturedToken.player === 'A') capturedByB++; else capturedByA++;
+  const capturer = board[from];
+  board[move.over] = null;
+  board[to] = capturer;
+  board[from] = null;
+
+  if (capturer.type === 'king') { capturer.hasCaptured = true; capturer.kingMoves++; } // §27 / house rules
+  lastMovedTo = to; // promotion is decided when the turn ENDS, not mid-chain
+  sfx('capture');
+
+  const further = getCaptureMovesForToken(to);
+  if (further.length > 0) {
+    chainTokenId = to;
+    selected = to;
+    legalMoves = further.map(m => m.to);
+    captureMap = {};
+    further.forEach(m => captureMap[m.to] = m);
+    setStatus('✨ Capture! Eat again, or finish your turn.');
+    setTimeout(() => sfx('chain'), 220);
+    render();
+  } else {
+    endTurn();
+  }
+}
+
+// ---------- INTERACTION ----------
+function setStatus(msg, warn) { const s = document.getElementById('status'); s.textContent = msg || ''; s.className = warn ? 'warn' : ''; }
+
+function onNodeClick(id) {
+  ensureAudio();
+  if (gameOver || busy) return;
+  if (mode === 'ai' && currentPlayer === aiPlayer) return; // AI's turn
+
+  // Mid-chain: only the chaining token may act, and only via a further capture.
+  if (chainTokenId !== null) {
+    if (legalMoves.includes(id)) performCapture(chainTokenId, id);
+    return;
+  }
+
+  // A token is selected and this click is one of its legal destinations.
+  if (selected !== null && legalMoves.includes(id)) {
+    if (captureMap[id]) performCapture(selected, id);
+    else performSimpleMove(selected, id);
+    return;
+  }
+
+  // Clicking the already-selected token again deselects it.
+  if (selected === id) {
+    selected = null; legalMoves = []; captureMap = {};
+    setStatus('');
+    render();
+    return;
+  }
+
+  const token = board[id];
+  if (token && token.player === currentPlayer) {
+    const myCaptures = getCaptureMovesForToken(id);
+    const mySimple = getSimpleMoves(id);
+    selected = id;
+    sfx('select');
+    captureMap = {}; myCaptures.forEach(m => captureMap[m.to] = m);
+    legalMoves = Array.from(new Set([...mySimple, ...myCaptures.map(m => m.to)]));
+    setStatus('');
+    render();
+    return;
+  }
+
+  selected = null; legalMoves = []; captureMap = {};
+  setStatus('');
+  render();
+}
+
+// ---------- TOKEN STYLES, SETTINGS, SOUND ----------
+const SHAPES = ['pawn', 'ring', 'pin', 'gem', 'ghost'];
+const COLORS = ['black', 'blue', 'red', 'green', 'yellow'];
+const COLOR_EMOJI = { black: '⚫', blue: '🔵', red: '🔴', green: '🟢', yellow: '🟡' };
+const PALETTE = {
+  black:  { light: '#8a8a8a', main: '#2e2e2e', dark: '#0a0a0a', stroke: '#a5a5a5' },
+  blue:   { light: '#8fbaff', main: '#2a5fd6', dark: '#0a1e55', stroke: '#0a1e55' },
+  red:    { light: '#ff9a9a', main: '#d62b2b', dark: '#5a0a0a', stroke: '#5a0a0a' },
+  green:  { light: '#9af0a0', main: '#2fa84a', dark: '#0b3d1a', stroke: '#0b3d1a' },
+  yellow: { light: '#fff2a0', main: '#f2b90f', dark: '#7a5a00', stroke: '#7a5a00' }
+};
+let tokenStyle = { A: { shape: 'pawn', color: 'black' }, B: { shape: 'pawn', color: 'blue' } };
+// Three known house-rule variants for when a King's long-distance "energy" unlocks.
+let kingRule = 'afterCapture'; // 'immediate' | 'after3' | 'afterCapture'
+function kingHasEnergy(t) {
+  if (kingRule === 'immediate') return true;
+  if (kingRule === 'after3') return t.kingMoves >= 3;
+  return t.hasCaptured; // 'afterCapture' (default)
+}
+let soundOn = true;
+let quietRender = false;   // suppress crown pop/sound when tokens are only being redrawn
+
+function buildDefs() {
+  let h = '<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b2a1b"/><stop offset="1" stop-color="#21160e"/></linearGradient>';
+  h += '<radialGradient id="grad-white" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cdd3da"/></radialGradient>';
+  COLORS.forEach(k => {
+    const c = PALETTE[k];
+    h += `<radialGradient id="grad-${k}" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="${c.light}"/><stop offset=".5" stop-color="${c.main}"/><stop offset="1" stop-color="${c.dark}"/></radialGradient>`;
+  });
+  document.getElementById('global-defs').innerHTML = h;
+}
+
+// Five token shapes (from the Ludo-style set): pawn, ring, map pin, gem, ghost. All fit inside radius ~26.
+function shapeMarkup(shape, ck) {
+  const c = PALETTE[ck], f = `url(#grad-${ck})`, st = c.stroke;
+  switch (shape) {
+    case 'ring':
+      return `<circle r="24" fill="${f}" stroke="${st}" stroke-width="2"/><circle r="15.5" fill="none" stroke="#fff" stroke-width="4.5" opacity=".92"/><circle r="8" fill="${f}" stroke="${st}" stroke-width="1.5"/>`;
+    case 'pin':
+      return `<path d="M0 26 C-5 15 -20 9 -20 -6 A20 20 0 1 1 20 -6 C20 9 5 15 0 26 Z" fill="url(#grad-white)" stroke="#8a929a" stroke-width="2"/><circle cx="0" cy="-6" r="10.5" fill="${f}" stroke="${st}" stroke-width="2"/>`;
+    case 'gem':
+      return `<polygon points="0,-25 22,-7 14,22 -14,22 -22,-7" fill="${f}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/><polygon points="0,-25 22,-7 0,2 -22,-7" fill="#fff" opacity=".28"/><polygon points="-22,-7 0,2 -14,22" fill="#000" opacity=".18"/><polygon points="22,-7 0,2 14,22" fill="#000" opacity=".08"/>`;
+    case 'ghost':
+      return `<path d="M-20 22 L-20 -4 A20 20 0 0 1 20 -4 L20 22 L13 16 L6.5 22 L0 16 L-6.5 22 L-13 16 Z" fill="${f}" stroke="${st}" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-7" cy="-5" rx="5" ry="6.5" fill="#fff"/><ellipse cx="7" cy="-5" rx="5" ry="6.5" fill="#fff"/><circle cx="-6" cy="-4" r="2.6" fill="#111"/><circle cx="8" cy="-4" r="2.6" fill="#111"/>`;
+    default: // pawn
+      return `<ellipse cx="0" cy="19" rx="20" ry="7" fill="${f}" stroke="${st}" stroke-width="2"/><path d="M-12 19 Q-8 3 -5 -4 L5 -4 Q8 3 12 19 Z" fill="${f}" stroke="${st}" stroke-width="2"/><ellipse cx="0" cy="-4" rx="10" ry="3.5" fill="${f}" stroke="${st}" stroke-width="2"/><circle cx="0" cy="-14" r="10" fill="${f}" stroke="${st}" stroke-width="2"/><ellipse cx="-3.5" cy="-17.5" rx="3.5" ry="2.5" fill="#fff" opacity=".4"/>`;
+  }
+}
+function previewSvg(shape, ck, size, cls) {
+  return `<svg class="${cls || ''}" viewBox="-30 -30 60 60" width="${size}" height="${size}">${shapeMarkup(shape, ck)}</svg>`;
+}
+
+function saveSettings() {
+  try { localStorage.setItem('omeso.settings', JSON.stringify({ tokenStyle, soundOn, kingRule })); } catch (e) {}
+}
+function loadSettings() {
+  try {
+    const v = JSON.parse(localStorage.getItem('omeso.settings') || 'null');
+    if (v) {
+      ['A', 'B'].forEach(p => {
+        const q = v.tokenStyle && v.tokenStyle[p];
+        if (q && SHAPES.includes(q.shape) && COLORS.includes(q.color)) tokenStyle[p] = { shape: q.shape, color: q.color };
+      });
+      if (tokenStyle.A.color === tokenStyle.B.color) { tokenStyle.A.color = 'black'; tokenStyle.B.color = 'blue'; }
+      if (typeof v.soundOn === 'boolean') soundOn = v.soundOn;
+      if (['immediate', 'after3', 'afterCapture'].includes(v.kingRule)) kingRule = v.kingRule;
+    }
+  } catch (e) {}
+  updateSoundBtn();
+}
+
+function applyStyleNow() {
+  clearTokens();
+  quietRender = true;
+  render();
+  quietRender = false;
+}
+function renderKingRulePicker() {
+  const opts = [
+    ['afterCapture', 'After first capture', 'a King slides long-distance only once it has eaten as a King (default).'],
+    ['after3', 'After 3 moves as King', 'a King moves one step at a time for its first 3 moves/jumps, then slides freely.'],
+    ['immediate', 'Immediately on crowning', 'a King can slide long-distance the moment it is promoted.']
+  ];
+  document.getElementById('king-rule-opts').innerHTML = opts.map(([v, label, desc]) =>
+    `<button class="ropt ${kingRule === v ? 'on' : ''}" onclick="pickKingRule('${v}')"><b>${label}</b><br>${desc}</button>`
+  ).join('');
+}
+function pickKingRule(v) { kingRule = v; saveSettings(); renderKingRulePicker(); }
+
+function renderTokenPicker() {
+  ['A', 'B'].forEach(p => {
+    const other = p === 'A' ? 'B' : 'A';
+    let sh = '', co = '';
+    SHAPES.forEach(sp => {
+      sh += `<button class="opt ${tokenStyle[p].shape === sp ? 'on' : ''}" onclick="pickShape('${p}','${sp}')">${previewSvg(sp, tokenStyle[p].color, 42)}</button>`;
+    });
+    COLORS.forEach(ck => {
+      const cc = PALETTE[ck];
+      const dis = tokenStyle[other].color === ck;
+      co += `<button class="sw ${tokenStyle[p].color === ck ? 'on' : ''} ${dis ? 'dis' : ''}" style="background:radial-gradient(circle at 35% 30%, ${cc.light}, ${cc.main} 55%, ${cc.dark})" onclick="pickColor('${p}','${ck}')"></button>`;
+    });
+    document.getElementById('shapes-' + p).innerHTML = sh;
+    document.getElementById('colors-' + p).innerHTML = co;
+    document.getElementById('tl-' + p).textContent = `${COLOR_EMOJI[tokenStyle[p].color]} PLAYER ${p}`;
+  });
+}
+function pickShape(p, sp) { tokenStyle[p].shape = sp; saveSettings(); applyStyleNow(); renderTokenPicker(); }
+function pickColor(p, ck) {
+  const other = p === 'A' ? 'B' : 'A';
+  if (tokenStyle[other].color === ck) return;   // the two players must be easy to tell apart
+  tokenStyle[p].color = ck; saveSettings(); applyStyleNow(); renderTokenPicker();
+}
+function openTokens() { renderTokenPicker(); renderKingRulePicker(); document.getElementById('tokens-screen').classList.add('show'); }
+function closeTokens() { document.getElementById('tokens-screen').classList.remove('show'); }
+
+// ----- Sound (synthesized, no files, works offline) -----
+let audioCtx = null;
+function ensureAudio() {
+  if (!soundOn) return null;
+  try {
+    if (!audioCtx) {
+      const AC = (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext);
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  } catch (e) { return null; }
+}
+function tone(c, f, dur, type, vol, delay, endF) {
+  const t0 = c.currentTime + (delay || 0);
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(f, t0);
+  if (endF) o.frequency.exponentialRampToValueAtTime(endF, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol || 0.2, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g); g.connect(c.destination);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noise(c, dur, vol, delay) {
+  const n = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = c.createBufferSource(), g = c.createGain();
+  src.buffer = buf; g.gain.value = vol;
+  src.connect(g); g.connect(c.destination);
+  src.start(c.currentTime + (delay || 0));
+}
+const SFX = {
+  select:  c => tone(c, 620, 0.07, 'sine', 0.12, 0, 900),
+  move:    c => { tone(c, 230, 0.13, 'triangle', 0.3, 0, 120); noise(c, 0.05, 0.06, 0); },
+  capture: c => { noise(c, 0.2, 0.22, 0); tone(c, 320, 0.28, 'sawtooth', 0.2, 0, 70); },
+  chain:   c => { tone(c, 660, 0.1, 'triangle', 0.18, 0); tone(c, 990, 0.16, 'triangle', 0.18, 0.09); },
+  king:    c => { [523, 659, 784, 1047].forEach((f, i) => tone(c, f, 0.22, 'triangle', 0.22, i * 0.1)); },
+  warn:    c => { tone(c, 260, 0.2, 'square', 0.16, 0); tone(c, 260, 0.2, 'square', 0.16, 0.3); tone(c, 340, 0.3, 'square', 0.14, 0.6); },
+  forfeit: c => { noise(c, 0.25, 0.2, 0); tone(c, 420, 0.5, 'sawtooth', 0.22, 0, 60); },
+  win:     c => { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(c, f, 0.28, 'triangle', 0.22, i * 0.13)); },
+  lose:    c => { [392, 330, 262, 196].forEach((f, i) => tone(c, f, 0.4, 'sine', 0.22, i * 0.25)); }
+};
+function sfx(name) {
+  if (!soundOn) return;
+  const c = ensureAudio();
+  if (!c) return;
+  try { SFX[name](c); } catch (e) {}
+}
+function updateSoundBtn() { const b = document.getElementById('sound-btn'); if (b) b.textContent = soundOn ? '🔊' : '🔇'; }
+function toggleSound() {
+  soundOn = !soundOn;
+  saveSettings(); updateSoundBtn();
+  if (soundOn) { ensureAudio(); sfx('select'); }
+}
+
+// ---------- RENDER ----------
+// Lines, dots and touch targets are drawn once. Tokens are persistent elements keyed by uid,
+// so moving a token slides it, and a removed token plays a capture animation.
+const svg = document.getElementById('board-svg');
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+const layers = {};
+const tokenEls = new Map();
+
+function initBoard() {
+  svg.innerHTML = '';
+  svg.setAttribute('viewBox', `0 0 ${VIEW_W} ${VIEW_H}`);
+  buildDefs();
+  svg.appendChild(el('rect', { x: 5, y: 5, width: VIEW_W - 10, height: VIEW_H - 10, rx: 28, fill: 'url(#wood)', stroke: '#6b4526', 'stroke-width': 5 }));
+  svg.appendChild(el('rect', { x: 20, y: 20, width: VIEW_W - 40, height: VIEW_H - 40, rx: 20, fill: 'none', stroke: 'rgba(232,185,106,0.25)', 'stroke-width': 1.5 }));
+  ['lines', 'dots', 'marks', 'tokens', 'fx', 'hits'].forEach(n => {
+    layers[n] = el('g', {});
+    svg.appendChild(layers[n]);
+  });
+  EDGES.forEach(([a, b]) => {
+    const pa = nodePos(a), pb = nodePos(b);
+    layers.lines.appendChild(el('line', { class: 'board-line', x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y }));
+  });
+  for (let id = 1; id <= 25; id++) {
+    const p = nodePos(id);
+    layers.dots.appendChild(el('circle', { class: 'node-dot', cx: p.x, cy: p.y, r: 7 }));
+    const hit = el('circle', { class: 'hit', cx: p.x, cy: p.y, r: 34 });
+    hit.addEventListener('click', () => onNodeClick(id));
+    layers.hits.appendChild(hit);
+  }
+}
+
+function spawnFx(text, x, y, cls) {
+  const t = el('text', { x, y, 'text-anchor': 'middle', class: 'fx ' + cls });
+  t.textContent = text;
+  layers.fx.appendChild(t);
+  setTimeout(() => t.remove(), 1100);
+}
+
+function clearTokens() {
+  tokenEls.forEach(r => r.g.remove());
+  tokenEls.clear();
+  if (layers.fx) layers.fx.innerHTML = '';
+}
+
+function syncTokens() {
+  const seen = new Set();
+  for (let id = 1; id <= 25; id++) {
+    const t = board[id];
+    if (!t) continue;
+    seen.add(t.uid);
+    const p = nodePos(id);
+    let rec = tokenEls.get(t.uid);
+    if (!rec) {
+      const g = el('g', { class: 'tok' });
+      const inner = el('g', { class: 'inner' });
+      const ts = tokenStyle[t.player];
+      inner.innerHTML = '<circle class="halo" cx="0" cy="0" r="37"/><circle class="kring" cx="0" cy="0" r="31"/><g class="shape">' + shapeMarkup(ts.shape, ts.color) + '</g>';
+      g.appendChild(inner);
+      g.style.transform = `translate(${p.x}px, ${p.y}px)`;
+      layers.tokens.appendChild(g);
+      rec = { g, inner, king: false, warn: false, x: p.x, y: p.y };
+      tokenEls.set(t.uid, rec);
+    }
+    if (rec.x !== p.x || rec.y !== p.y) {
+      rec.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
+      rec.x = p.x; rec.y = p.y;
+    }
+    rec.g.classList.toggle('sel', selected === id);
+    rec.g.classList.toggle('king', t.type === 'king');
+    rec.g.classList.toggle('doomed', doomedUid === t.uid);
+    if (t.type === 'king' && !rec.king) {
+      const crown = el('text', { class: 'crown', x: 0, y: -19, 'text-anchor': 'middle' });
+      crown.textContent = '👑';
+      rec.inner.appendChild(crown);
+      rec.king = true;
+      if (!quietRender) { spawnFx('KING!', p.x, p.y - 46, 'promo'); sfx('king'); }
+    }
+    if (doomedUid === t.uid && !rec.warn) {
+      const w = el('text', { class: 'warnmark', x: 0, y: -32 });
+      w.textContent = '⚠️';
+      rec.inner.appendChild(w);
+      rec.warn = true;
+    }
+  }
+  tokenEls.forEach((rec, uid) => {
+    if (!seen.has(uid)) {
+      spawnFx('💥', rec.x, rec.y + 10, 'burst');
+      rec.g.classList.add('dying');
+      const g = rec.g;
+      setTimeout(() => g.remove(), 500);
+      tokenEls.delete(uid);
+    }
+  });
+}
+
+function renderTray(id, count, victim) {
+  let h = '';
+  for (let i = 0; i < count; i++) h += previewSvg(tokenStyle[victim].shape, tokenStyle[victim].color, 24, 'mini');
+  document.getElementById(id).innerHTML = h;
+}
+
+function render() {
+  layers.marks.innerHTML = '';
+  legalMoves.forEach(id => {
+    const p = nodePos(id);
+    layers.marks.appendChild(el('circle', { class: captureMap[id] ? 'mk-capture' : 'mk-move', cx: p.x, cy: p.y, r: 17 }));
+  });
+  lastAiSteps.forEach(st => {
+    [st.from, st.to].forEach(id => {
+      const p = nodePos(id);
+      layers.marks.appendChild(el('circle', { class: 'mk-ai', cx: p.x, cy: p.y, r: 33 }));
+    });
+  });
+
+  syncTokens();
+
+  const indicator = document.getElementById('turn-indicator');
+  const tag = (mode === 'ai' && currentPlayer === aiPlayer) ? ' (AI)' : '';
+  indicator.textContent = `${COLOR_EMOJI[tokenStyle[currentPlayer].color]} PLAYER ${currentPlayer}${tag}'s TURN`;
+  indicator.className = currentPlayer === 'A' ? 'playerA' : 'playerB';
+
+  document.getElementById('lbl-A').textContent = `${COLOR_EMOJI[tokenStyle.A.color]} PLAYER A`;
+  document.getElementById('lbl-B').textContent = `${COLOR_EMOJI[tokenStyle.B.color]} PLAYER B`;
+  document.getElementById('tray-A').classList.toggle('active', currentPlayer === 'A');
+  document.getElementById('tray-B').classList.toggle('active', currentPlayer === 'B');
+  renderTray('cap-A', capturedByA, 'B'); // blue tokens Player A has eaten
+  renderTray('cap-B', capturedByB, 'A'); // black tokens Player B has eaten
+
+  const actionBar = document.getElementById('action-bar');
+  actionBar.innerHTML = '';
+  if (chainTokenId !== null && !busy) {
+    const btn = document.createElement('button');
+    btn.textContent = '✋ FINISH TURN';
+    btn.onclick = endTurn;
+    actionBar.appendChild(btn);
+  }
+}
+
+// ================= AI =================
+// The AI never has its own rules. It calls the same getSimpleMoves / getAllCaptures /
+// getMandatoryCaptures / getCaptureMovesForToken / promoteIfNeeded used by human play,
+// on copies of the board. Difficulty only changes depth, evaluation weights and randomness.
+const TIMEOUT = { timeout: true };
+const AI_CONFIG = {
+  easy:     { depth: 1, timeMs: 0,    randomLegal: 0.30, topN: 0, topPickChance: 0,   w: { normal: 100, king: 200, adv: 0, center: 0 } },
+  moderate: { depth: 3, timeMs: 1000, randomLegal: 0,    topN: 3, topPickChance: 0.10, w: { normal: 100, king: 300, adv: 4, center: 3 } },
+  hard:     { depth: 8, timeMs: 1500, randomLegal: 0,    topN: 0, topPickChance: 0,   w: { normal: 100, king: 320, adv: 6, center: 4 } }
+};
+
+function cloneBoard(b) {
+  const c = {};
+  for (let i = 1; i <= 25; i++) c[i] = b[i] ? { player: b[i].player, type: b[i].type, hasCaptured: b[i].hasCaptured, kingMoves: b[i].kingMoves, uid: b[i].uid } : null;
+  return c;
+}
+function countTokens(b) {
+  const n = { A: 0, B: 0 };
+  for (let i = 1; i <= 25; i++) if (b[i]) n[b[i].player]++;
+  return n;
+}
+
+// Every complete turn available to `player` from `startBoard`: capture chains (may stop after
+// any capture) or, when no capture is obligatory, ordinary moves. The AI never chooses to
+// ignore an obligatory capture. Temporarily points the global `board` at copies so the shared
+// rules functions can be reused, then restores it.
+function enumerateTurns(player, startBoard) {
+  const results = [];
+  const saved = board;
+  try {
+    board = startBoard;
+    const mandatory = getMandatoryCaptures(player).length > 0;
+    const firstCaps = getAllCaptures(player);
+    for (const m of firstCaps) {
+      enumChain(cloneBoard(startBoard), m, 0, [], results);
+      if (results.length > 400) break;
+    }
+    if (!mandatory) {
+      for (let id = 1; id <= 25; id++) {
+        const t = startBoard[id];
+        if (!t || t.player !== player) continue;
+        board = startBoard;
+        const dests = getSimpleMoves(id);
+        for (const to of dests) {
+          const b = cloneBoard(startBoard);
+          const wasKing = b[id].type === 'king';
+          b[to] = b[id]; b[id] = null;
+          if (wasKing) b[to].kingMoves++;
+          board = b;
+          promoteIfNeeded(to);
+          results.push({ board: b, captured: 0, steps: [{ from: id, to, over: null }] });
+        }
+      }
+    }
+  } finally {
+    board = saved;
+  }
+  return results;
+}
+
+function enumChain(b, m, captured, steps, results) {
+  const token = b[m.from];
+  b[m.over] = null; b[m.to] = token; b[m.from] = null;
+  if (token.type === 'king') { token.hasCaptured = true; token.kingMoves++; }
+  const newSteps = steps.concat([{ from: m.from, to: m.to, over: m.over }]);
+  const cap = captured + 1;
+  board = b;
+  const further = getCaptureMovesForToken(m.to);
+  const fin = cloneBoard(b);          // stopping here is always allowed
+  board = fin;
+  promoteIfNeeded(m.to);              // crowned only if the turn ends on the final line
+  results.push({ board: fin, captured: cap, steps: newSteps });
+  if (results.length > 400) return;
+  for (const f of further) {
+    enumChain(cloneBoard(b), f, cap, newSteps, results);
+    if (results.length > 400) return;
+  }
+}
+
+function evaluate(b, me, w) {
+  let score = 0;
+  for (let id = 1; id <= 25; id++) {
+    const t = b[id];
+    if (!t) continue;
+    const col = nodeRowCol(id).col;
+    let v = t.type === 'king' ? w.king : w.normal;
+    if (t.type === 'normal') v += w.adv * (t.player === 'A' ? col - 1 : 5 - col);
+    if (col === 3) v += w.center;
+    score += (t.player === me ? v : -v);
+  }
+  return score;
+}
+
+function orderTurns(turns) { turns.sort((x, y) => y.captured - x.captured); }
+
+// Negamax with alpha-beta. Scores are from the point of view of `player` (to move).
+function search(b, player, depth, alpha, beta, cfg, ctx) {
+  if (ctx.check && Date.now() > ctx.deadline) throw TIMEOUT;
+  const opp = player === 'A' ? 'B' : 'A';
+  const cnt = countTokens(b);
+  if (cnt[player] === 0) return -10000 - depth;
+  if (cnt[opp] === 0) return 10000 + depth;
+  if (depth === 0) return evaluate(b, player, cfg.w);
+  const turns = enumerateTurns(player, b);
+  if (turns.length === 0) return -5000;
+  orderTurns(turns);
+  let best = -Infinity;
+  for (const t of turns) {
+    const sc = -search(t.board, opp, depth - 1, -beta, -alpha, cfg, ctx);
+    if (sc > best) best = sc;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function chooseAiTurn(player, level) {
+  const cfg = AI_CONFIG[level];
+  const opp = player === 'A' ? 'B' : 'A';
+  const turns = enumerateTurns(player, board);
+  if (turns.length === 0) return null;
+  if (turns.length === 1) return turns[0];
+  if (Math.random() < cfg.randomLegal) return turns[Math.floor(Math.random() * turns.length)];
+  orderTurns(turns);
+  let scored = turns.map(t => ({ t, s: 0 }));
+  const deadline = cfg.timeMs ? Date.now() + cfg.timeMs : Infinity;
+  for (let d = 1; d <= cfg.depth; d++) {
+    const ctx = { deadline, check: d > 1 };   // depth 1 always completes
+    const round = [];
+    let alpha = -Infinity;
+    try {
+      for (const item of scored) {
+        const a = cfg.topN > 0 ? -Infinity : alpha; // full window when we need exact scores for the top few
+        const sc = -search(item.t.board, opp, d - 1, -Infinity, -a, cfg, ctx);
+        round.push({ t: item.t, s: sc });
+        if (sc > alpha) alpha = sc;
+      }
+    } catch (e) {
+      if (e !== TIMEOUT) throw e;
+      break;                                    // out of time: keep the last completed depth
+    }
+    scored = round.sort((x, y) => y.s - x.s);
+  }
+  if (cfg.topN > 0 && Math.random() < cfg.topPickChance) {
+    const top = scored.slice(0, cfg.topN);
+    return top[Math.floor(Math.random() * top.length)].t;
+  }
+  return scored[0].t;
+}
+
+function aiTakeTurn(gid) {
+  if (gid !== gameId || gameOver || mode !== 'ai' || currentPlayer !== aiPlayer) return;
+  const real = board;
+  let choice = null;
+  try { choice = chooseAiTurn(aiPlayer, aiLevel); } finally { board = real; }
+  if (!choice) {
+    lastAiSteps = [];
+    setStatus(`Player ${aiPlayer} has no legal move and passes.`, true);
+    setTimeout(() => { if (gid === gameId) endTurn(); }, 1200);
+    return;
+  }
+  // Replay the chosen turn one jump at a time so the human can follow it.
+  busy = true;
+  const steps = choice.steps;
+  let i = 0;
+  const next = () => {
+    if (gid !== gameId) return;
+    if (i >= steps.length) {
+      board = choice.board;          // same tokens (same uids), including any promotion
+      lastMovedTo = null;
+      busy = false;
+      endTurn();
+      return;
+    }
+    const st = steps[i++];
+    board[st.to] = board[st.from];
+    board[st.from] = null;
+    if (st.over !== null) {
+      board[st.over] = null;
+      if (aiPlayer === 'A') capturedByA++; else capturedByB++;
+    }
+    sfx(st.over !== null ? 'capture' : 'move');
+    lastAiSteps = steps.slice(0, i);
+    render();
+    setTimeout(next, 600);
+  };
+  next();
+}
+
+// ----- Save / Resume: keeps one in-progress game so the player can pick up where they left off -----
+const SAVE_KEY = 'omeso.savedGame';
+function serializeBoard() {
+  const out = {};
+  for (let i = 1; i <= 25; i++) out[i] = board[i];
+  return out;
+}
+function saveGame() {
+  if (gameOver) { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} return; }
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      board: serializeBoard(), currentPlayer, capturedByA, capturedByB,
+      mode, aiPlayer, aiLevel, nextUid
+    }));
+  } catch (e) {}
+}
+function hasSavedGame() {
+  try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; }
+}
+function resumeGame() {
+  let v;
+  try { v = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { v = null; }
+  if (!v) return;
+  clearTokens();
+  busy = false; doomedUid = null; lastAiSteps = [];
+  board = {};
+  for (let i = 1; i <= 25; i++) board[i] = v.board[i];
+  currentPlayer = v.currentPlayer; capturedByA = v.capturedByA; capturedByB = v.capturedByB;
+  mode = v.mode; aiPlayer = v.aiPlayer; aiLevel = v.aiLevel; nextUid = v.nextUid;
+  gameOver = false; gameId++;
+  document.getElementById('menu').classList.remove('show');
+  document.getElementById('game-over').classList.remove('show');
+  startTurn();
+}
+function updateResumeBtn() {
+  const b = document.getElementById('resume-btn');
+  if (b) b.style.display = hasSavedGame() ? 'block' : 'none';
+}
+
+const GUIDE_STEPS = [
+  ['🎯 Goal', 'Capture every one of your opponent\'s tokens, or leave them with no token able to move at all. Whoever achieves that first wins.'],
+  ['🗺️ The board', 'Omeso is played on 25 points joined by lines. Tokens only ever move along an actual line — never off it, and never in a straight jump the board doesn\'t draw.'],
+  ['🀄 Setup', 'You start with 10 tokens on your two columns. The middle column starts empty — that empty space is where the action happens first.'],
+  ['👉 Moving', 'Tap one of your tokens, then tap a lit-up point to move it one step along a connected line.'],
+  ['🍴 Eating (capturing)', 'If your token can jump straight over an enemy token and land on an empty point just beyond it, that landing point lights up red — tap it to eat that token.'],
+  ['⚠️ You must eat if you can', 'If any of your tokens can eat, you are not free to just move casually instead — this game gives no hints, so it is up to you to notice. If you move a different token instead of eating, the token that should have eaten is taken from you as a penalty. Watch for the red warning glow — that is your only warning, and it only comes after you have already moved.'],
+  ['🔗 Chain eating', 'After eating one token, if that same token can eat again immediately, you may continue — or tap FINISH TURN to stop where you are.'],
+  ['👑 Becoming a King', 'If your token reaches the far edge of the board (your opponent\'s home line) and is STILL there when your turn ends, it is crowned a King. A King can move backward and in any direction, not just forward.'],
+  ['⚡ A King\'s growing power', 'A King eventually becomes able to slide long distances across empty points in one move, and to eat an enemy from far away along a line. Exactly when this unlocks is your choice — open TOKENS, COLORS &amp; RULES to set it to "after its first capture", "after 3 moves as a King", or "immediately once crowned".'],
+  ['♚ Kings and other Kings', 'A King is only ever forced to eat another King — it may freely ignore a normal token, with no penalty, if it prefers.'],
+  ['🚧 The middle line', 'Once one of your ordinary tokens reaches the middle column, it can no longer retreat back into your own home columns by an ordinary move — though it may still retreat as part of a capture.'],
+  ['🤖 Playing the AI', 'Easy plays casually and sometimes moves randomly. Moderate looks a few moves ahead. Hard searches deep and plays its strongest move every time. All three follow the exact same rules you do — none of them can cheat.']
+];
+function buildGuide() {
+  document.getElementById('guide-body').innerHTML = GUIDE_STEPS.map(([t, d]) =>
+    `<div class="step"><b>${t}</b><p>${d}</p></div>`
+  ).join('') + '<div class="step"><p style="text-align:center;opacity:.7">That\'s everything — close this and play. The rules will make more sense after your first game than they do on paper.</p></div>';
+}
+function openGuide() { buildGuide(); document.getElementById('guide').classList.add('show'); }
+function closeGuide() {
+  document.getElementById('guide').classList.remove('show');
+  try { localStorage.setItem('omeso.seenGuide', '1'); } catch (e) {}
+}
+
+function showMenu() { updateResumeBtn(); document.getElementById('menu').classList.add('show'); }
+function startGame(m, lvl) {
+  ensureAudio();
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  mode = m;
+  if (lvl) aiLevel = lvl;
+  document.getElementById('menu').classList.remove('show');
+  resetGame();
+}
+
+loadSettings();
+board = newBoard();
+initBoard();
+startTurn();
+updateResumeBtn();
+try { if (!localStorage.getItem('omeso.seenGuide')) openGuide(); } catch (e) {}
+if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch (e) {} }
+</script>
+</body>
+</html>
